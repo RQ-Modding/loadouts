@@ -14,14 +14,20 @@ Assume nothing about the mod when it is not installed: check `logs\rqmod.log` fo
   `Wipe Loadout` and Back (a free slot has only Save Loadout). Use the ids `rq.ui.get` lists there;
   do not guess them.
 - **Dialogs:** Yes / No before a load (with the game's "don't ask again" row) and before saving
-  over or wiping a slot; an OK notice after a load and for each refusal.
+  over or wiping a slot; an OK notice after a load and for each refusal. When the loadout kept
+  Boosts the character no longer keeps (the third world, after a reset), a choice menu instead of
+  the Yes / No: `Load with the kept Boosts` (id `all`), `Load the skills only` (id `skills`) and
+  Back, each row's comment with its price or its refusal.
 - **Rename page:** a kit page over the status page with a text field `loadouts-name` (use
   `rqmod-ctl type`), `loadouts-ok` and `loadouts-cancel`. It opens after Rename Loadout and after
   the first save into a free slot.
-- **Log:** `Loadouts: saved slot <A> of character <iic>: <n> skill(s)`, `Loadouts: loaded slot ...`
-  and `Loadouts: ... stopped at <skill>: <why>`.
+- **Log:** `Loadouts: saved slot <A> of character <iic>: <n> skill(s), <e> erased, <b> kept
+  Boost(s)`, `Loadouts: loaded slot <A> of character <iic>: <n> purchase(s) for <p> point(s), <e>
+  erased, <h> hotbar place(s)`, `Loadouts: ... stopped at <skill>: <why>` and `Loadouts: slot <A>
+  of character <iic> could not be worked out: <error>`.
 - **Data:** `rq.savedata` key `chara-<character number>` in the mod's own data (it follows the
-  game's save).
+  game's save): per slot `name`, `skills` (`{id, n}`), `erased` (starting skills the build lacks),
+  `boosts` (kept Boosts) and `bar`.
 
 ## How to check it
 
@@ -32,17 +38,34 @@ Assume nothing about the mod when it is not installed: check `logs\rqmod.log` fo
    position, and the points are spent again.
 5. Spend the free points, then Load again: the notice says how many points are missing, and
    nothing is bought.
+6. A build through other skills, on a healer (Crook, level 35 or more): learn Healing 2 (Healing 1
+   at 3 first), Healing 3, Recovery Rain 2, then ERASE Healing 3, Healing 1 and Recovery Rain 1.
+   Save, equip Skill Again (or Morurun's reset), Load: the question names Healing 3 as learned on
+   the way; after it, the build is as saved and Healing 1, 3 and Recovery Rain 1 are gone.
 
 ## Forcing it for a test
 
-`rq.mod.get("loadouts")` returns `save(iic, slot, name)`, `load(iic, slot)`, `check(iic, slot)`,
-`rename`, `wipe`, `get(iic, slot)` and `snapshot(iic)`: the actions without their dialogs. `load`
-returns true and `{ learned, points, placed }`, or false and why (`"free"`, `"bad"`, `"skills"`,
-`"points"`, `"room"`, `"refused"`) with a detail. Use `rq.chara.learn` and `rq.chara.forget` to
-change a character. Work on a copy of the save.
+`rq.mod.get("loadouts")` returns `save(iic, slot, name)`, `load(iic, slot, opts)`,
+`check(iic, slot, opts)`, `rename`, `wipe`, `get(iic, slot)`, `snapshot(iic)` and
+`boosts_to_rebuild(iic, entry)`: the actions without their dialogs. `opts.boosts = false` leaves
+the kept Boosts out.
+- `check` returns the plan: `actions` in order (`{ skill, from, to }` to learn,
+  `{ skill, forget = true }` to erase), `points`, `new`, `raised`, `extra` (skills learned on the
+  way), `erased` (starting skills erased), `boosts` (kept Boosts rebuilt) and `probes` (lists worked
+  out). Or nil and why with a detail.
+- `load` returns true and `{ learned, erased, points, placed }`, or false and why with a detail:
+  `"free"`, `"bad"` (what is damaged), `"skills"` (a list of `{ id, why, text, via }`, `via` the
+  skill on the way that cannot be learned), `"points"` (`{ need, have }`), `"room"`
+  (`{ short, have, need }` in free rows), `"plan"` (the error text) or `"refused"` (the game refused
+  a step; the steps before it stay done).
+
+Use `rq.chara.learn` and `rq.chara.forget` to change a character, and
+`rq.ain.call("Ｃスキルドレイン", iic)` for the game's reset. Work on a copy of the save.
 
 ## Test Lab
 
 `loadouts` (with this mod installed): save and load on a character after an ERASE, the hotbar, the
-refusals (points, a skill that cannot be learned, damaged data), rename and wipe, and the button's
-menus.
+refusals (points, a skill that cannot be learned, free rows, damaged data), rename and wipe, and
+the button's menus. `loadouts-paths` (with Skill Removal Payback too): Crook's healer build through
+Healing 1 and Healing 3 after the game's reset, two Attack Boosts in either order and the second
+alone, the kept Boosts in the third world with the choice menu, and a level the character lacks.
