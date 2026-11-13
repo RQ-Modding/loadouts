@@ -41,7 +41,7 @@ save has its own. The game ignores that file; without the mod it stays as it is.
 
 ## Install
 
-Needs [RQ MOD](https://github.com/RQ-Modding/RQ-Mod) with loader **2.45.0** or newer. Extract the
+Needs [RQ MOD](https://github.com/RQ-Modding/RQ-Mod) with loader **2.45.1** or newer. Extract the
 release zip into the game's `mods` folder, so that you have `mods/loadouts/mod.json`.
 
 ## How it works

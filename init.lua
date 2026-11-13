@@ -391,8 +391,8 @@ slot_menu = function(iic, slot)
   if entry then
     message = "What to do with " .. quote(entry) .. "?"
     rows = {
-      { id = "save", text = "Save Loadout", comment = "Keep " .. short_name(iic) .. "'s learned skills and hotbar here,\nin place of these." },
-      { id = "load", text = "Load Loadout", comment = "Learn what is missing at the game's price,\nthen set the hotbar.\n\n" .. summary(entry, 5) },
+      { id = "save", text = "Save Loadout", comment = "Keep " .. short_name(iic) .. "'s learned skills and hotbar here, in place of these." },
+      { id = "load", text = "Load Loadout", comment = "Learn what is missing at the game's price, then set the hotbar.\n\n" .. summary(entry, 5) },
       { id = "rename", text = "Rename Loadout" },
       { id = "wipe", text = "Wipe Loadout", comment = "Empty the slot. The skills do not change." },
     }

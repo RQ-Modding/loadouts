@@ -3,7 +3,7 @@
   "id": "loadouts",
   "name": "Loadouts",
   "author": "Moru Zerinho6",
-  "version": "1.0.0",
-  "loader": "2.45.0",
+  "version": "1.0.1",
+  "loader": "2.45.1",
   "priority": 0
 }

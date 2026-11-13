@@ -3,6 +3,11 @@
 Each section is a version of the mod, the `version` in `mod.json`. The release workflow copies the
 section of a tagged version into the release notes.
 
+## 1.0.1
+
+- The menus' comments are cut between words (loader 2.45.1); the comments no longer break their
+  sentences by hand.
+
 ## 1.0.0
 
 First version.
