@@ -42,8 +42,8 @@ Assume nothing about the mod when it is not installed: check `logs\rqmod.log` fo
    at 3 first), Healing 3, Recovery Rain 2, then ERASE Healing 3, Healing 1 and Recovery Rain 1.
    Save, equip Skill Again (or Morurun's reset), Load: the question names Healing 3 as learned on
    the way; after it, the build is as saved and Healing 1, 3 and Recovery Rain 1 are gone.
-7. Step 6 with Skill Removal Payback 1.2.0: the question's last line says what comes back
-   ("Skill Removal Payback gives N back: M in all."), the notice after the load says the points
+7. Step 6 with Skill Removal Payback 1.3.0: the question's last line says what comes back
+   ("The skills it erases give N back: M in all."), the notice after the load says the points
    spent and back, and the free points went down by M only.
 
 ## Forcing it for a test
@@ -53,8 +53,8 @@ Assume nothing about the mod when it is not installed: check `logs\rqmod.log` fo
 `boosts_to_rebuild(iic, entry)`: the actions without their dialogs. `opts.boosts = false` leaves
 the kept Boosts out.
 - `check` returns the plan: `actions` in order (`{ skill, from, to, points }` to learn,
-  `{ skill, forget = true, back }` to erase), `points` (the price), `back` (what Skill Removal
-  Payback gives back for the erasures, 0 without it), `peak` (the most spent at one time: the
+  `{ skill, forget = true, back }` to erase), `points` (the price), `back` (what the mods give
+  back for the erasures, from `rq.chara.forget_points`; 0 when none does), `peak` (the most spent at one time: the
   points the character needs), `new`, `raised`, `extra` (skills learned on the way), `erased`
   (starting skills erased), `boosts` (kept Boosts rebuilt) and `probes` (lists worked out). Or nil
   and why with a detail.

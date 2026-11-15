@@ -28,9 +28,10 @@
 -- or the saved data no longer fits the game.
 --
 -- A load's erasures are the player's (rq.chara.forget with player = true, loader 2.51.0), so a mod
--- that gives points back for ERASE gives them back here too (1.2.0). With Skill Removal Payback
--- 1.2.0 or newer the plan counts those points (its price less what comes back) and needs the most
--- the load spends at any one time, since a refund comes only when its skill is erased.
+-- that gives points back for ERASE (Skill Removal Payback) gives them back here too. The plan asks
+-- what each erasure would give, as the row will be then (rq.chara.forget_points, loader 2.52.0;
+-- 1.3.0), counts those points (its price less what comes back) and needs the most the load spends
+-- at any one time, since a refund comes only when its skill is erased.
 --
 -- Kept in rq.savedata (it follows the game's save), one key per character: "chara-<number>"
 -- (or "chara-<text id>" for a mod's character) =
@@ -48,16 +49,6 @@ local HELD = 569           -- the held item's place: the game swaps it for the i
 
 local ui = rq.uikit
 local SKILL_SLOTS = rq.ids.skill.SKILL_SLOTS -- its rank + 2 is the hotbar's size
-
--- Skill Removal Payback 1.2.0 or newer (it answers the player's erasures; its payback takes n), or
--- nil.
-local function payback_mod()
-  local ok, m = pcall(rq.mod.get, "skill-removal-payback")
-  if ok and type(m) == "table" and m.answers_player == true and type(m.payback) == "function" then
-    return m
-  end
-  return nil
-end
 
 -- ---- the data ----
 
@@ -264,8 +255,8 @@ end
 -- ---- planning a load ----
 
 -- The plan of a load: the actions in order ({skill, from, to, points} learns, {skill, forget,
--- back} erases), their price (points), what Skill Removal Payback gives back for the erasures
--- (back), the most spent at one time (peak), and counts for the dialogs. nil, why ("skills",
+-- back} erases), their price (points), what the mods give back for the erasures (back), the most
+-- spent at one time (peak), and counts for the dialogs. nil, why ("skills",
 -- "room", "points") and a detail when it cannot be done now.
 local function plan_load(iic, entry, with_boosts)
   local P = { entry = entry, actions = {}, points = 0, new = 0, raised = 0, extra = 0, erased = 0,
@@ -278,7 +269,6 @@ local function plan_load(iic, entry, with_boosts)
       rows0[s.skill] = s
     end
   end
-  local pb = payback_mod()
   local base_n = {}
   for _, s in ipairs(rq.chara.base_skills(iic)) do base_n[s.id] = s.n end
   local paid, fresh = {}, {} -- points paid per skill in the plan; rows the plan made
@@ -346,20 +336,17 @@ local function plan_load(iic, entry, with_boosts)
     return older + p
   end
 
-  -- What Skill Removal Payback gives back when id is erased now (0 without it).
+  -- What the mods give back when id is erased now, as its row is after the steps so far.
   local function refund(id)
-    if not pb then return 0 end
-    local n = lv[id] or 0
+    local n = math.max(lv[id] or 1, 1)
     local by, keeps = boost_table(iic)
-    local r = rows0[id]
-    local ctx = { iic = iic, skill = id, slot = (r and not fresh[id]) and r.slot or 0, rank = n, n = n,
-      cost = record(id), kept = keeps and by[id] ~= nil and n >= 4, caller = "lua" }
-    local ok, back = pcall(pb.payback, ctx)
+    local ok, back = pcall(rq.chara.forget_points, iic, id,
+      { player = true, n = n, cost = record(id), kept = keeps and by[id] ~= nil and n >= 4 })
     if not ok then
-      rq.log(("%s: Skill Removal Payback's price of %s: %s"):format(MOD, skill_name(id), tostring(back)))
+      rq.log(("%s: what erasing %s gives back: %s"):format(MOD, skill_name(id), tostring(back)))
       return 0
     end
-    return math.max(0, math.tointeger(back) or 0)
+    return back
   end
 
   local function buy(id, n, pts)
@@ -777,7 +764,7 @@ local function refusal(iic, entry, why, detail)
   end
   if why == "points" then
     if (detail.back or 0) > 0 then
-      return ("%s needs %d skill points before Skill Removal Payback\ngives %d back; %s has %d.\n%s more needed."):format(
+      return ("%s needs %d skill points before the skills it erases\ngive %d back; %s has %d.\n%s more needed."):format(
         name, detail.need, detail.back, short_name(iic), detail.have,
         plural(detail.need - detail.have, "point is", "points are"))
     end
@@ -812,13 +799,13 @@ local function on_the_way(plan)
   return "\n" .. plural(plan.extra, "skill is", "skills are") .. " learned on the way and erased after."
 end
 
--- A plan's price: "for 103 skill points. Crook has 120.", and what Skill Removal Payback gives
--- back for its erasures on a line of its own.
+-- A plan's price: "for 103 skill points. Crook has 120.", and what the mods give back for its
+-- erasures on a line of its own.
 local function price_text(iic, plan)
   local s = ("for %s. %s has %d."):format(plural(plan.points, "skill point", "skill points"),
     short_name(iic), rq.chara.skill_points(iic))
   if plan.back > 0 then
-    s = s .. ("\nSkill Removal Payback gives %d back: %d in all."):format(plan.back, plan.points - plan.back)
+    s = s .. ("\nThe skills it erases give %d back: %d in all."):format(plan.back, plan.points - plan.back)
   end
   return s
 end
@@ -872,9 +859,8 @@ local function do_run(iic, slot, entry, plan)
         .. " learned on the way and erased.") or ""
       local price = plural(done.points, "skill point", "skill points")
       if done.back > 0 then
-        price = ("%s\n(%d spent, %d back %s)"):format(
-          plural(done.points - done.back, "skill point", "skill points"), done.points, done.back,
-          payback_mod() and "from Skill Removal Payback" or "for the erased skills")
+        price = ("%s\n(%d spent, %d back for the erased skills)"):format(
+          plural(done.points - done.back, "skill point", "skill points"), done.points, done.back)
       end
       rq.ui.notice(("%s is loaded for %s.\n%s.%s"):format(quote(entry), price, done_text(plan), way))
     end

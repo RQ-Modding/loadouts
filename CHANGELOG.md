@@ -3,20 +3,31 @@
 Each section is a version of the mod, the `version` in `mod.json`. The release workflow copies the
 section of a tagged version into the release notes.
 
+## 1.3.0
+
+- A load counts what any mod gives back for the skills it erases, not only Skill Removal Payback:
+  it asks the loader what each erasure would give (`rq.chara.forget_points`, loader 2.52.0), as the
+  row will be then. With Skill Removal Payback 1.3.0, the skills learned on the way and erased
+  after, and the starting skills the build lacks, give their points back, as in 1.2.0.
+- A load's erasures are the player's (`rq.chara.forget` with `player = true`, loader 2.51.0), so a
+  mod that gives points back for ERASE gives them back for them.
+- The texts name no mod: "The skills it erases give 7 back: 96 in all." before a load, "(143
+  spent, 7 back for the erased skills)" after it, and the refusal for points says the same.
+- Needs loader 2.52.0.
+
 ## 1.2.0
 
-- A load's erasures are the player's (`rq.chara.forget` with `player = true`, loader 2.51.0), so a
-  mod that gives points back for ERASE gives them back here too. With Skill Removal Payback 1.2.0
-  or newer, the skills learned on the way and erased after, and the starting skills the build
-  lacks, give their points back: switching builds costs only the builds; before, the skills on the
-  way were paid again on every load.
+- With Skill Removal Payback 1.2.0 or newer, the skills a load erases give their points back as
+  its ERASE would: the skills learned on the way and erased after, and the starting skills the
+  build lacks. Switching builds costs only the builds; before, the skills on the way were paid
+  again on every load.
 - The question before a load says what comes back and the price in all ("Skill Removal Payback
   gives 7 back: 96 in all."), and the notice after it the points spent and the points back.
 - The points check counts the most a load spends at one time, before an erasure gives points
   back; a refusal for points says how many come back.
-- Without Skill Removal Payback, or with an older one, a load costs as in 1.1.0 (another mod that
-  pays back the player's erasures shows in the notice after the load).
-- Needs loader 2.51.0.
+- Without Skill Removal Payback, or with an older one, a load costs as in 1.1.0.
+- (A later 1.2.0 build needed loader 2.51.0 and erased with `rq.chara.forget`'s `player` instead
+  of Skill Removal Payback's `erase`; 1.3.0 does that.)
 
 ## 1.1.0
 
