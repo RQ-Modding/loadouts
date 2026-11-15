@@ -27,6 +27,11 @@
 -- before anything is bought, when a skill cannot be reached, the points or the free rows are short,
 -- or the saved data no longer fits the game.
 --
+-- With Skill Removal Payback 1.2.0 or newer installed, a load's erasures go through its erase, so
+-- each gives back what the skill window's ERASE would (1.2.0): the skills learned on the way cost
+-- nothing in the end. The plan counts those points (its price less what comes back) and needs the
+-- most the load spends at any one time, since a refund comes only when its skill is erased.
+--
 -- Kept in rq.savedata (it follows the game's save), one key per character: "chara-<number>"
 -- (or "chara-<text id>" for a mod's character) =
 -- { A = { name, skills = {{id, n}}, erased = {id}, boosts = {id}, bar }, ... }.
@@ -43,6 +48,15 @@ local HELD = 569           -- the held item's place: the game swaps it for the i
 
 local ui = rq.uikit
 local SKILL_SLOTS = rq.ids.skill.SKILL_SLOTS -- its rank + 2 is the hotbar's size
+
+-- Skill Removal Payback with its erase (1.2.0), or nil.
+local function payback_mod()
+  local ok, m = pcall(rq.mod.get, "skill-removal-payback")
+  if ok and type(m) == "table" and type(m.erase) == "function" and type(m.payback) == "function" then
+    return m
+  end
+  return nil
+end
 
 -- ---- the data ----
 
@@ -248,19 +262,26 @@ end
 
 -- ---- planning a load ----
 
--- The plan of a load: the actions in order ({skill, from, to} learns, {skill, forget} erases),
--- their price, and counts for the dialogs. nil, why ("skills", "room", "points") and a detail when
--- it cannot be done now.
+-- The plan of a load: the actions in order ({skill, from, to, points} learns, {skill, forget,
+-- back} erases), their price (points), what Skill Removal Payback gives back for the erasures
+-- (back), the most spent at one time (peak), and counts for the dialogs. nil, why ("skills",
+-- "room", "points") and a detail when it cannot be done now.
 local function plan_load(iic, entry, with_boosts)
   local P = { entry = entry, actions = {}, points = 0, new = 0, raised = 0, extra = 0, erased = 0,
-    boosts = 0 }
-  local lv, start = {}, {}
+    boosts = 0, back = 0, peak = 0 }
+  local lv, start, rows0 = {}, {}, {}
   for _, s in ipairs(rq.chara.slots(iic)) do
     if s.skill > 0 then
       lv[s.skill] = s.n
       start[s.skill] = s.n
+      rows0[s.skill] = s
     end
   end
+  local pb = payback_mod()
+  local base_n = {}
+  for _, s in ipairs(rq.chara.base_skills(iic)) do base_n[s.id] = s.n end
+  local paid, fresh = {}, {} -- points paid per skill in the plan; rows the plan made
+  local spent = 0            -- the points spent so far, less what came back
   local want = {}
   for _, s in ipairs(entry.skills) do want[s.id] = math.max(want[s.id] or 0, s.n) end
   local drop, helper = {}, {}   -- erase once nothing needs them: lacked by the loadout; on the way
@@ -291,25 +312,69 @@ local function plan_load(iic, entry, with_boosts)
     return list, room
   end
 
-  local function push(id, n)
+  local function push(id, n, pts)
     after[#after + 1] = { skill = id, n = n }
     list = nil
     local last = P.actions[#P.actions]
     if n == 0 then
-      P.actions[#P.actions + 1] = { skill = id, forget = true }
+      P.actions[#P.actions + 1] = { skill = id, forget = true, back = pts or 0 }
       lv[id] = nil
     else
       if last and not last.forget and last.skill == id then
         last.to = n
+        last.points = last.points + (pts or 0)
       else
-        P.actions[#P.actions + 1] = { skill = id, from = lv[id] or 0, to = n }
+        P.actions[#P.actions + 1] = { skill = id, from = lv[id] or 0, to = n, points = pts or 0 }
       end
       lv[id] = n
     end
   end
 
+  -- The purchase record id's row would have now, as rq.chara.learn writes it: a new row the points
+  -- paid; a raised one its record plus them (a -1 record becomes them, a 0 one the older steps at
+  -- the game's price plus them).
+  local function record(id)
+    local p = paid[id] or 0
+    local r = rows0[id]
+    if fresh[id] or not r then return p end
+    if p == 0 then return r.cost end
+    if r.cost > 0 then return r.cost + p end
+    if r.cost == -1 then return p end
+    local older, from = 0, base_n[id] or 0
+    if r.n > from then older = rq.chara.price(iic, id, from, r.n) or 0 end
+    return older + p
+  end
+
+  -- What Skill Removal Payback gives back when id is erased now (0 without it).
+  local function refund(id)
+    if not pb then return 0 end
+    local n = lv[id] or 0
+    local by, keeps = boost_table(iic)
+    local r = rows0[id]
+    local ctx = { iic = iic, skill = id, slot = (r and not fresh[id]) and r.slot or 0, rank = n, n = n,
+      cost = record(id), kept = keeps and by[id] ~= nil and n >= 4, caller = "lua" }
+    local ok, back = pcall(pb.payback, ctx)
+    if not ok then
+      rq.log(("%s: Skill Removal Payback's price of %s: %s"):format(MOD, skill_name(id), tostring(back)))
+      return 0
+    end
+    return math.max(0, math.tointeger(back) or 0)
+  end
+
+  local function buy(id, n, pts)
+    paid[id] = (paid[id] or 0) + pts
+    spent = spent + pts
+    if spent > P.peak then P.peak = spent end
+    P.points = P.points + pts
+    push(id, n, pts)
+  end
+
   local function erase(id, group)
-    push(id, 0)
+    local back = refund(id)
+    P.back = P.back + back
+    spent = spent - back
+    paid[id], fresh[id] = nil, true
+    push(id, 0, back)
     if group then group[id] = nil end
     if group == drop then P.erased = P.erased + 1 end
   end
@@ -426,8 +491,7 @@ local function plan_load(iic, entry, with_boosts)
           if make_room() then goto again end -- the list is read again after the erase
           error({ no_room = id }, 0) -- the plan stops here; plan_load counts the rows
         end
-        P.points = P.points + r.points
-        push(id, (lv[id] or 0) + (r.step or 1))
+        buy(id, (lv[id] or 0) + (r.step or 1), r.points)
       else
         local need, why, text = lacks(id, r)
         if not need then
@@ -460,21 +524,27 @@ local function plan_load(iic, entry, with_boosts)
   -- One skill of the loadout (or a kept Boost): reached, or left out of the plan with its reason.
   local cannot = {}
   local function attempt(id, n)
+    local last = P.actions[#P.actions]
     local keep = {
       after = #after, actions = #P.actions, points = P.points, extra = P.extra,
-      erased = P.erased, last_to = P.actions[#P.actions] and P.actions[#P.actions].to,
-      lv = {}, helper = {}, drop = {},
+      erased = P.erased, last_to = last and last.to, last_points = last and last.points,
+      back = P.back, peak = P.peak, spent = spent,
+      lv = {}, helper = {}, drop = {}, paid = {}, fresh = {},
     }
     for k, v in pairs(lv) do keep.lv[k] = v end
     for k in pairs(helper) do keep.helper[k] = true end
     for k in pairs(drop) do keep.drop[k] = true end
+    for k, v in pairs(paid) do keep.paid[k] = v end
+    for k in pairs(fresh) do keep.fresh[k] = true end
     local ok, err = reach(id, n, 0)
     if ok then return true end
     for i = #after, keep.after + 1, -1 do after[i] = nil end
     for i = #P.actions, keep.actions + 1, -1 do P.actions[i] = nil end
-    if P.actions[#P.actions] then P.actions[#P.actions].to = keep.last_to end
+    last = P.actions[#P.actions]
+    if last then last.to, last.points = keep.last_to, keep.last_points end
     P.points, P.extra, P.erased = keep.points, keep.extra, keep.erased
-    lv, helper, drop = keep.lv, keep.helper, keep.drop
+    P.back, P.peak, spent = keep.back, keep.peak, keep.spent
+    lv, helper, drop, paid, fresh = keep.lv, keep.helper, keep.drop, keep.paid, keep.fresh
     list = nil
     if err.id ~= id then
       err.via, err.id = err.id, id
@@ -523,7 +593,7 @@ local function plan_load(iic, entry, with_boosts)
   P.probes = probes
   if #cannot > 0 then return nil, "skills", cannot end
   local free = rq.chara.skill_points(iic)
-  if P.points > free then return nil, "points", { need = P.points, have = free } end
+  if P.peak > free then return nil, "points", { need = P.peak, have = free, back = P.back } end
   return P
 end
 
@@ -596,7 +666,8 @@ end
 -- Runs a plan: true and what it did, or false, "refused" and what it did when the game refused a
 -- step (the steps before it stay done).
 local function run(iic, slot, plan)
-  local done = { learned = 0, erased = 0, points = 0 }
+  local done = { learned = 0, erased = 0, points = 0, back = 0 }
+  local pb = payback_mod()
   local function finish()
     rq.chara.recalc(iic)
     done.placed = put_bar(iic, plan.entry.bar)
@@ -604,7 +675,15 @@ local function run(iic, slot, plan)
   end
   for _, a in ipairs(plan.actions) do
     if a.forget then
-      rq.chara.forget(iic, a.skill)
+      -- Through Skill Removal Payback when it is there: the points back, as its ERASE gives.
+      local ok, err, back = false, nil, 0
+      if pb then ok, err, back = pcall(pb.erase, iic, a.skill) end
+      if ok then
+        done.back = done.back + (back or 0)
+      else
+        if pb then rq.log(("%s: Skill Removal Payback's erase: %s"):format(MOD, tostring(err))) end
+        rq.chara.forget(iic, a.skill)
+      end
       done.erased = done.erased + 1
     else
       local ok, spent, more = rq.chara.learn(iic, a.skill, { to = a.to })
@@ -620,8 +699,8 @@ local function run(iic, slot, plan)
     end
   end
   finish()
-  rq.log(("%s: loaded slot %s of character %d: %d purchase(s) for %d point(s), %d erased, %d hotbar place(s)"):format(
-    MOD, slot, iic, done.learned, done.points, done.erased, done.placed))
+  rq.log(("%s: loaded slot %s of character %d: %d purchase(s) for %d point(s), %d erased (%d point(s) back), %d hotbar place(s)"):format(
+    MOD, slot, iic, done.learned, done.points, done.erased, done.back, done.placed))
   return true, done
 end
 
@@ -703,6 +782,11 @@ local function refusal(iic, entry, why, detail)
     return table.concat(lines, "\n")
   end
   if why == "points" then
+    if (detail.back or 0) > 0 then
+      return ("%s needs %d skill points before Skill Removal Payback\ngives %d back; %s has %d.\n%s more needed."):format(
+        name, detail.need, detail.back, short_name(iic), detail.have,
+        plural(detail.need - detail.have, "point is", "points are"))
+    end
     return ("%s costs %d skill points; %s has %d.\n%s more needed."):format(name, detail.need,
       short_name(iic), detail.have, plural(detail.need - detail.have, "point is", "points are"))
   end
@@ -732,6 +816,17 @@ end
 local function on_the_way(plan)
   if plan.extra == 0 then return "" end
   return "\n" .. plural(plan.extra, "skill is", "skills are") .. " learned on the way and erased after."
+end
+
+-- A plan's price: "for 103 skill points. Crook has 120.", and what Skill Removal Payback gives
+-- back for its erasures on a line of its own.
+local function price_text(iic, plan)
+  local s = ("for %s. %s has %d."):format(plural(plan.points, "skill point", "skill points"),
+    short_name(iic), rq.chara.skill_points(iic))
+  if plan.back > 0 then
+    s = s .. ("\nSkill Removal Payback gives %d back: %d in all."):format(plan.back, plan.points - plan.back)
+  end
+  return s
 end
 
 -- What a load did, for the notice after it: "5 skills learned, 1 raised and ..." (two lines at most
@@ -781,8 +876,12 @@ local function do_run(iic, slot, entry, plan)
     else
       local way = plan.extra > 0 and ("\n" .. plural(plan.extra, "skill was", "skills were")
         .. " learned on the way and erased.") or ""
-      rq.ui.notice(("%s is loaded for %s.\n%s.%s"):format(quote(entry),
-        plural(done.points, "skill point", "skill points"), done_text(plan), way))
+      local price = plural(done.points, "skill point", "skill points")
+      if done.back > 0 then
+        price = ("%s\n(%d spent, %d back from Skill Removal Payback)"):format(
+          plural(done.points - done.back, "skill point", "skill points"), done.points, done.back)
+      end
+      rq.ui.notice(("%s is loaded for %s.\n%s.%s"):format(quote(entry), price, done_text(plan), way))
     end
   else
     rq.ui.notice(("Loading %s stopped at %s: %s.\nThe steps before it are done."):format(quote(entry),
@@ -794,8 +893,7 @@ end
 local function plan_row(iic, entry, id, text, plan, why, detail)
   local comment
   if plan then
-    comment = ("It %s for %s.\n%s has %d.%s"):format(plan_text(plan), plural(plan.points, "skill point",
-      "skill points"), short_name(iic), rq.chara.skill_points(iic), on_the_way(plan))
+    comment = ("It %s %s%s"):format(plan_text(plan), price_text(iic, plan), on_the_way(plan))
   else
     comment = refusal(iic, entry, why, detail)
   end
@@ -833,8 +931,7 @@ local function do_load(iic, slot)
     })
   end
   if #lean.actions > 0 then
-    local text = ("Load %s?\nIt %s\nfor %s. %s has %d.%s"):format(quote(entry), plan_text(lean),
-      plural(lean.points, "skill point", "skill points"), short_name(iic), rq.chara.skill_points(iic),
+    local text = ("Load %s?\nIt %s\n%s%s"):format(quote(entry), plan_text(lean), price_text(iic, lean),
       on_the_way(lean))
     if not rq.ui.confirm(text, { remember = "load", remember_label = "Loading a loadout" }) then
       return slot_menu(iic, slot)

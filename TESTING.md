@@ -23,7 +23,7 @@ Assume nothing about the mod when it is not installed: check `logs\rqmod.log` fo
   the first save into a free slot.
 - **Log:** `Loadouts: saved slot <A> of character <iic>: <n> skill(s), <e> erased, <b> kept
   Boost(s)`, `Loadouts: loaded slot <A> of character <iic>: <n> purchase(s) for <p> point(s), <e>
-  erased, <h> hotbar place(s)`, `Loadouts: ... stopped at <skill>: <why>` and `Loadouts: slot <A>
+  erased (<b> point(s) back), <h> hotbar place(s)`, `Loadouts: ... stopped at <skill>: <why>` and `Loadouts: slot <A>
   of character <iic> could not be worked out: <error>`.
 - **Data:** `rq.savedata` key `chara-<character number>` in the mod's own data (it follows the
   game's save): per slot `name`, `skills` (`{id, n}`), `erased` (starting skills the build lacks),
@@ -42,6 +42,9 @@ Assume nothing about the mod when it is not installed: check `logs\rqmod.log` fo
    at 3 first), Healing 3, Recovery Rain 2, then ERASE Healing 3, Healing 1 and Recovery Rain 1.
    Save, equip Skill Again (or Morurun's reset), Load: the question names Healing 3 as learned on
    the way; after it, the build is as saved and Healing 1, 3 and Recovery Rain 1 are gone.
+7. Step 6 with Skill Removal Payback 1.2.0: the question's last line says what comes back
+   ("Skill Removal Payback gives N back: M in all."), the notice after the load says the points
+   spent and back, and the free points went down by M only.
 
 ## Forcing it for a test
 
@@ -49,13 +52,16 @@ Assume nothing about the mod when it is not installed: check `logs\rqmod.log` fo
 `check(iic, slot, opts)`, `rename`, `wipe`, `get(iic, slot)`, `snapshot(iic)` and
 `boosts_to_rebuild(iic, entry)`: the actions without their dialogs. `opts.boosts = false` leaves
 the kept Boosts out.
-- `check` returns the plan: `actions` in order (`{ skill, from, to }` to learn,
-  `{ skill, forget = true }` to erase), `points`, `new`, `raised`, `extra` (skills learned on the
-  way), `erased` (starting skills erased), `boosts` (kept Boosts rebuilt) and `probes` (lists worked
-  out). Or nil and why with a detail.
-- `load` returns true and `{ learned, erased, points, placed }`, or false and why with a detail:
+- `check` returns the plan: `actions` in order (`{ skill, from, to, points }` to learn,
+  `{ skill, forget = true, back }` to erase), `points` (the price), `back` (what Skill Removal
+  Payback gives back for the erasures, 0 without it), `peak` (the most spent at one time: the
+  points the character needs), `new`, `raised`, `extra` (skills learned on the way), `erased`
+  (starting skills erased), `boosts` (kept Boosts rebuilt) and `probes` (lists worked out). Or nil
+  and why with a detail.
+- `load` returns true and `{ learned, erased, points, back, placed }`, or false and why with a
+  detail:
   `"free"`, `"bad"` (what is damaged), `"skills"` (a list of `{ id, why, text, via }`, `via` the
-  skill on the way that cannot be learned), `"points"` (`{ need, have }`), `"room"`
+  skill on the way that cannot be learned), `"points"` (`{ need, have, back }`, `need` the plan's `peak`), `"room"`
   (`{ short, have, need }` in free rows), `"plan"` (the error text) or `"refused"` (the game refused
   a step; the steps before it stay done).
 
@@ -67,5 +73,6 @@ Use `rq.chara.learn` and `rq.chara.forget` to change a character, and
 `loadouts` (with this mod installed): save and load on a character after an ERASE, the hotbar, the
 refusals (points, a skill that cannot be learned, free rows, damaged data), rename and wipe, and
 the button's menus. `loadouts-paths` (with Skill Removal Payback too): Crook's healer build through
-Healing 1 and Healing 3 after the game's reset, two Attack Boosts in either order and the second
+Healing 1 and Healing 3 after the game's reset, with what Payback gives back, the refusal one point
+short of the most at one time and the load with exactly that, two Attack Boosts in either order and the second
 alone, the kept Boosts in the third world with the choice menu, and a level the character lacks.

@@ -3,6 +3,18 @@
 Each section is a version of the mod, the `version` in `mod.json`. The release workflow copies the
 section of a tagged version into the release notes.
 
+## 1.2.0
+
+- With Skill Removal Payback 1.2.0 or newer, the skills a load erases give their points back as
+  its ERASE would: the skills learned on the way and erased after, and the starting skills the
+  build lacks. Switching builds costs only the builds; before, the skills on the way were paid
+  again on every load.
+- The question before a load says what comes back and the price in all ("Skill Removal Payback
+  gives 7 back: 96 in all."), and the notice after it the points spent and the points back.
+- The points check counts the most a load spends at one time, before an erasure gives points
+  back; a refusal for points says how many come back.
+- Without Skill Removal Payback, or with an older one, a load costs as in 1.1.0.
+
 ## 1.1.0
 
 - Skills the game sells only through others load: a load learns what such a skill needs on the

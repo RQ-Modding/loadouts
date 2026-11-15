@@ -39,8 +39,12 @@ A load is refused, before anything is bought, when:
   save it again).
 
 With [Skill Removal Payback](https://github.com/RQ-Modding/skill-removal-payback) the points of an
-ERASE come back, so switching between loadouts costs nothing in the end. The erasures a load makes
-itself give nothing back: the price a load shows is what it costs, the skills on the way included.
+ERASE come back, so switching between loadouts costs nothing in the end. With Skill Removal
+Payback 1.2.0 or newer, the erasures a load makes give points back too: the skills learned on the
+way and the starting skills the build lacks. The question before a load says how many come back
+and the price in all, so a build costs only its own skills. A load still needs the points it spends
+before those come back. Without it, the price a load shows is what it costs, the skills on the way
+included.
 
 ## Keys and settings
 
@@ -66,7 +70,8 @@ names once the skill is erased (`rq.chara.price`, `rq.chara.learnable`'s `after`
 out its steps on the game's own list as it would be after the steps so far
 (`rq.chara.learnable`'s `after`, the game's conditions as `needs` and `level`), with the kept
 Boosts from `rq.chara.boosts`; then it buys with `rq.chara.learn` (the game's own buy), erases with
-`rq.chara.forget` and places the hotbar with `rq.chara.set_bar`. The data is in `rq.savedata`.
+`rq.chara.forget` (through Skill Removal Payback's `erase` when it is there, and its `payback` for
+the plan's price) and places the hotbar with `rq.chara.set_bar`. The data is in `rq.savedata`.
 
 ## License
 
