@@ -27,10 +27,10 @@
 -- before anything is bought, when a skill cannot be reached, the points or the free rows are short,
 -- or the saved data no longer fits the game.
 --
--- With Skill Removal Payback 1.2.0 or newer installed, a load's erasures go through its erase, so
--- each gives back what the skill window's ERASE would (1.2.0): the skills learned on the way cost
--- nothing in the end. The plan counts those points (its price less what comes back) and needs the
--- most the load spends at any one time, since a refund comes only when its skill is erased.
+-- A load's erasures are the player's (rq.chara.forget with player = true, loader 2.51.0), so a mod
+-- that gives points back for ERASE gives them back here too (1.2.0). With Skill Removal Payback
+-- 1.2.0 or newer the plan counts those points (its price less what comes back) and needs the most
+-- the load spends at any one time, since a refund comes only when its skill is erased.
 --
 -- Kept in rq.savedata (it follows the game's save), one key per character: "chara-<number>"
 -- (or "chara-<text id>" for a mod's character) =
@@ -49,10 +49,11 @@ local HELD = 569           -- the held item's place: the game swaps it for the i
 local ui = rq.uikit
 local SKILL_SLOTS = rq.ids.skill.SKILL_SLOTS -- its rank + 2 is the hotbar's size
 
--- Skill Removal Payback with its erase (1.2.0), or nil.
+-- Skill Removal Payback 1.2.0 or newer (it answers the player's erasures; its payback takes n), or
+-- nil.
 local function payback_mod()
   local ok, m = pcall(rq.mod.get, "skill-removal-payback")
-  if ok and type(m) == "table" and type(m.erase) == "function" and type(m.payback) == "function" then
+  if ok and type(m) == "table" and m.answers_player == true and type(m.payback) == "function" then
     return m
   end
   return nil
@@ -667,7 +668,6 @@ end
 -- step (the steps before it stay done).
 local function run(iic, slot, plan)
   local done = { learned = 0, erased = 0, points = 0, back = 0 }
-  local pb = payback_mod()
   local function finish()
     rq.chara.recalc(iic)
     done.placed = put_bar(iic, plan.entry.bar)
@@ -675,15 +675,9 @@ local function run(iic, slot, plan)
   end
   for _, a in ipairs(plan.actions) do
     if a.forget then
-      -- Through Skill Removal Payback when it is there: the points back, as its ERASE gives.
-      local ok, err, back = false, nil, 0
-      if pb then ok, err, back = pcall(pb.erase, iic, a.skill) end
-      if ok then
-        done.back = done.back + (back or 0)
-      else
-        if pb then rq.log(("%s: Skill Removal Payback's erase: %s"):format(MOD, tostring(err))) end
-        rq.chara.forget(iic, a.skill)
-      end
+      -- The player's erasure: a mod that pays back ERASE pays it back (the third value).
+      local _, _, back = rq.chara.forget(iic, a.skill, { player = true })
+      done.back = done.back + (back or 0)
       done.erased = done.erased + 1
     else
       local ok, spent, more = rq.chara.learn(iic, a.skill, { to = a.to })
@@ -878,8 +872,9 @@ local function do_run(iic, slot, entry, plan)
         .. " learned on the way and erased.") or ""
       local price = plural(done.points, "skill point", "skill points")
       if done.back > 0 then
-        price = ("%s\n(%d spent, %d back from Skill Removal Payback)"):format(
-          plural(done.points - done.back, "skill point", "skill points"), done.points, done.back)
+        price = ("%s\n(%d spent, %d back %s)"):format(
+          plural(done.points - done.back, "skill point", "skill points"), done.points, done.back,
+          payback_mod() and "from Skill Removal Payback" or "for the erased skills")
       end
       rq.ui.notice(("%s is loaded for %s.\n%s.%s"):format(quote(entry), price, done_text(plan), way))
     end

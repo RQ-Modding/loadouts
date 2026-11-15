@@ -58,7 +58,7 @@ save has its own. The game ignores that file; without the mod it stays as it is.
 
 ## Install
 
-Needs [RQ MOD](https://github.com/RQ-Modding/RQ-Mod) with loader **2.48.0** or newer. Extract the
+Needs [RQ MOD](https://github.com/RQ-Modding/RQ-Mod) with loader **2.51.0** or newer. Extract the
 release zip into the game's `mods` folder, so that you have `mods/loadouts/mod.json`.
 
 ## How it works
@@ -70,8 +70,8 @@ names once the skill is erased (`rq.chara.price`, `rq.chara.learnable`'s `after`
 out its steps on the game's own list as it would be after the steps so far
 (`rq.chara.learnable`'s `after`, the game's conditions as `needs` and `level`), with the kept
 Boosts from `rq.chara.boosts`; then it buys with `rq.chara.learn` (the game's own buy), erases with
-`rq.chara.forget` (through Skill Removal Payback's `erase` when it is there, and its `payback` for
-the plan's price) and places the hotbar with `rq.chara.set_bar`. The data is in `rq.savedata`.
+`rq.chara.forget` and `player = true` (the player's erasure, which Skill Removal Payback pays
+back; its `payback` gives the plan's price) and places the hotbar with `rq.chara.set_bar`. The data is in `rq.savedata`.
 
 ## License
 
