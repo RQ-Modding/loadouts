@@ -9,6 +9,9 @@ Assume nothing about the mod when it is not installed: check `logs\rqmod.log` fo
 - **Status page button:** the control `loadouts.open` of the `status` screen (a character's status
   page from the Party screen; not on the level-up after a fight). It opens the game's choice menu
   (screen `select`).
+- With more than two mods' buttons on the status page (loader 2.59.0 and later), the buttons are
+  one **MODS** button (`status-mods`) over both cells, and this button is a row of the list it
+  opens: press `status-mods`, then `button-loadouts-open` (`rq.gamebutton.groups()` says which).
 - **The menus** (screen `select`): the slots `Slot A: <name or (Free)>`, `Slot B: ...`,
   `Slot C: ...` and Cancel; then for a slot `Save Loadout`, `Load Loadout`, `Rename Loadout`,
   `Wipe Loadout` and Back (a free slot has only Save Loadout). Use the ids `rq.ui.get` lists there;
