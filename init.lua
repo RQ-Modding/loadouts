@@ -1,8 +1,7 @@
 -- Loadouts: three named skill builds per character, saved and loaded from the status page.
 -- API reference: https://rq-modding.github.io/rq-modding-docs/reference/
 --
--- A loadout keeps what the player did to the character's skills (notes/plans/plan-new-mods.md in
--- the workspace, sections 4 and 15):
+-- A loadout keeps what the player did to the character's skills:
 --   skills   each skill above the character's starting level (rq.chara.base_skills) that was
 --            bought, as the purchase record says (rq.chara.slots' cost, loader 2.45.0) or, for a
 --            purchase older than the record, as the game's buy list offers it (sold now, or listed

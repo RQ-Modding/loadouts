@@ -71,9 +71,9 @@ the kept Boosts out.
 Use `rq.chara.learn` and `rq.chara.forget` to change a character, and
 `rq.ain.call("Ｃスキルドレイン", iic)` for the game's reset. Work on a copy of the save.
 
-## Test Lab
+## Tested in the game
 
-`loadouts` (with this mod installed): save and load on a character after an ERASE, the hotbar, the
+The Test Lab's scenario `loadouts` (with this mod installed): save and load on a character after an ERASE, the hotbar, the
 refusals (points, a skill that cannot be learned, free rows, damaged data), rename and wipe, and
 the button's menus. `loadouts-paths` (with Skill Removal Payback too): Crook's healer build through
 Healing 1 and Healing 3 after the game's reset, with what Payback gives back, the refusal one point
