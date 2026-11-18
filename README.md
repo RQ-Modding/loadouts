@@ -3,6 +3,29 @@
 Three named skill builds per character. Save the skills you learned and the hotbar, try another
 build, and load the first one back, from the character's status page.
 
+## Showcase
+
+### Loadout Icon
+
+<img width="976" height="432" alt="image" src="https://github.com/user-attachments/assets/cf6f3a7f-5ba7-4b4c-acc8-f8ba1dd051a0" />
+
+### Loadout List
+
+<img width="855" height="847" alt="image" src="https://github.com/user-attachments/assets/30b7a7db-7da4-470d-8462-0fde79c24488" />
+
+### Loadout List with saved build
+
+<img width="1121" height="842" alt="image" src="https://github.com/user-attachments/assets/caec8b88-77a2-46ce-8810-669c2f14b7c6" />
+
+### Build Options
+
+<img width="873" height="838" alt="image" src="https://github.com/user-attachments/assets/88f63522-b5ad-4afe-8a38-9f9fe95a5765" />
+
+### Loading a Build
+
+<img width="855" height="851" alt="image" src="https://github.com/user-attachments/assets/7d4ba367-0ea7-491a-8631-dfabb327b5c9" />
+<img width="857" height="851" alt="image" src="https://github.com/user-attachments/assets/a1d20559-67ce-461b-a54a-5aad624490d4" />
+
 ## What it adds
 
 - **A button on the status page**, in the title row beside the character's name, with Skill
