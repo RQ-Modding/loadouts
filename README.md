@@ -50,6 +50,15 @@ build, and load the first one back, from the character's status page.
   reset, Load asks: **Load with the kept Boosts** raises each one to rank 4 again and erases it, so
   its effect is back; **Load the skills only** costs less and leaves them out. Each row shows its
   price.
+- **Attacks that change with the weapon.** With Spear Knowledge and a spear the game shows Melee
+  Attack as Thrust Attack, and a mod's knowledge can show it as its own attack (Spellblade
+  Knowledge's Magic Thrust, Athena QoL's Calculated Shot). It is still one row, with its uses: a
+  loadout follows that row, raises it from the uses the character started with, and loads it
+  whatever weapon the character holds. When the row shows another attack than the one saved, the
+  notice after the load says so ("Magic Thrust 1 shows as Melee Attack 1 with the weapon Elenoa
+  holds"); hold the weapon again and it shows the saved one.
+- **Any order.** A skill the game sells only once several of the loadout's skills are learned is
+  bought after them.
 - **Rename Loadout** and **Wipe Loadout** (wiping changes no skill).
 
 A load is refused, before anything is bought, when:
@@ -81,7 +90,7 @@ save has its own. The game ignores that file; without the mod it stays as it is.
 
 ## Install
 
-Needs [RQ MOD](https://github.com/RQ-Modding/RQ-Mod) with loader **2.52.0** or newer. Extract the
+Needs [RQ MOD](https://github.com/RQ-Modding/RQ-Mod) with loader **2.66.0** or newer. Extract the
 release zip into the game's `mods` folder, so that you have `mods/loadouts/mod.json`.
 
 ## How it works

@@ -48,15 +48,24 @@ Assume nothing about the mod when it is not installed: check `logs\rqmod.log` fo
 7. Step 6 with Skill Removal Payback 1.3.0: the question's last line says what comes back
    ("The skills it erases give N back: M in all."), the notice after the load says the points
    spent and back, and the free points went down by M only.
+8. Forms, with Spellblade Knowledge: Elenoa with a sword, Spellblade Knowledge and Spear Knowledge
+   at rank 4 and Magic Thrust 1 at 8 uses. Save, reset her skills, Load: one row of Magic Thrust 1
+   at 8, on her starting Melee Attack 1's row, and the slot's comment names no starting skill
+   erased. Hold a club and Load again after a reset: done, the row shows Melee Attack 1, and the
+   notice says so.
 
 ## Forcing it for a test
 
 `rq.mod.get("loadouts")` returns `save(iic, slot, name)`, `load(iic, slot, opts)`,
 `check(iic, slot, opts)`, `rename`, `wipe`, `get(iic, slot)`, `snapshot(iic)` and
-`boosts_to_rebuild(iic, entry)`: the actions without their dialogs. `opts.boosts = false` leaves
+`boosts_to_rebuild(iic, entry)`: the actions without their dialogs. `other_forms(iic, entry)`
+lists `{ id, shows }` for the loadout's skills whose row shows another form, as the notice after a
+load names them. `opts.boosts = false` leaves
 the kept Boosts out.
-- `check` returns the plan: `actions` in order (`{ skill, from, to, points }` to learn,
-  `{ skill, forget = true, back }` to erase), `points` (the price), `back` (what the mods give
+- `check` returns the plan: `actions` in order (`{ skill, key, from, to, points }` to learn,
+  `{ skill, key, forget = true, back }` to erase; `skill` the form the list sells or the row shows,
+  `key` its family, `rq.skill.forms(skill)[1]`, or the number for a character with two rows of
+  one family), `points` (the price), `back` (what the mods give
   back for the erasures, from `rq.chara.forget_points`; 0 when none does), `peak` (the most spent at one time: the
   points the character needs), `new`, `raised`, `extra` (skills learned on the way), `erased`
   (starting skills erased), `boosts` (kept Boosts rebuilt) and `probes` (lists worked out). Or nil
@@ -78,4 +87,7 @@ refusals (points, a skill that cannot be learned, free rows, damaged data), rena
 the button's menus. `loadouts-paths` (with Skill Removal Payback too): Crook's healer build through
 Healing 1 and Healing 3 after the game's reset, with what Payback gives back, the refusal one point
 short of the most at one time and the load with exactly that, two Attack Boosts in either order and the second
-alone, the kept Boosts in the third world with the choice menu, and a level the character lacks.
+alone, the kept Boosts in the third world with the choice menu, and a level the character lacks;
+with Spellblade Knowledge, Elenoa's Magic Thrust build saved by 1.3.0 and by 1.4.0, loaded after
+the game's reset with a sword and with a club, and in reverse order; the game's Thrust Attack on a
+spear; a skill reached on a second pass.

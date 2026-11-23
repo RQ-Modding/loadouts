@@ -26,6 +26,15 @@
 -- before anything is bought, when a skill cannot be reached, the points or the free rows are short,
 -- or the saved data no longer fits the game.
 --
+-- A skill's forms (rq.skill.forms, loader 2.66.0) take each other's place in one row: Melee Attack
+-- and the game's Thrust Attack, a mod's Magic Thrust or Calculated Shot. A loadout follows the row,
+-- not the number (1.4.0): a skill is the starting skill a form of it started as, a family is reached
+-- when its row is at the saved level whatever form the weapon or a knowledge makes it show, the plan
+-- buys the form the list sells, and the hotbar puts a saved skill on its family's row. A character
+-- with two rows of one family has that family matched by number, as before. A skill the game sells
+-- only once several of the loadout's skills are learned is tried again after them, while a pass
+-- reaches one.
+--
 -- A load's erasures are the player's (rq.chara.forget with player = true, loader 2.51.0), so a mod
 -- that gives points back for ERASE (Skill Removal Payback) gives them back here too. The plan asks
 -- what each erasure would give, as the row will be then (rq.chara.forget_points, loader 2.52.0;
@@ -134,6 +143,48 @@ local function for_sale(list, id)
   return r ~= nil and r.points > 0, r
 end
 
+-- ---- forms (loader 2.66.0) ----
+
+-- The family a skill belongs to, by its lowest number (rq.skill.forms); the number itself for a
+-- skill with no forms or a number outside the game's.
+local function family_key(id)
+  if math.type(id) ~= "integer" or id < 1 or id > 1000 then return id end
+  return rq.skill.forms(id)[1]
+end
+
+-- The key a character's rows are matched by: the family, except a family the character holds two
+-- rows of (the game's Melee Attack beside a Thrust Attack an erased Spear Knowledge left, an old
+-- save of a mod), matched by number.
+local function keyer(rows)
+  local count, cache = {}, {}
+  for _, s in ipairs(rows) do
+    if s.skill > 0 then
+      local k = family_key(s.skill)
+      count[k] = (count[k] or 0) + 1
+    end
+  end
+  return function(id)
+    local k = cache[id]
+    if k == nil then
+      k = family_key(id)
+      if (count[k] or 0) > 1 then k = id end
+      cache[id] = k
+    end
+    return k
+  end
+end
+
+-- The skill of the character's row of id's family: id when it holds that row, else the form it
+-- holds, else id.
+local function held_form(iic, id)
+  local k, form = family_key(id), nil
+  for _, s in ipairs(rq.chara.slots(iic)) do
+    if s.skill == id then return id end
+    if not form and s.skill > 0 and family_key(s.skill) == k then form = s.skill end
+  end
+  return form or id
+end
+
 -- The Boosts: { [skill] = row of rq.chara.boosts }, and whether this world keeps their effect.
 local function boost_table(iic)
   local rows, keeps = rq.chara.boosts(iic)
@@ -151,22 +202,29 @@ local function offered(iic, id, from, n, boosts)
   if rq.chara.price(iic, id, from, n) ~= nil then return true end
   if boosts[id] then return true end
   local rows = rq.chara.learnable(iic, { after = { { skill = id, n = 0 } } })
-  return find_row(rows, id) ~= nil
+  local k = family_key(id)
+  for _, r in ipairs(rows or {}) do
+    if family_key(r.skill) == k then return true end
+  end
+  return false
 end
 
 -- The loadout of the character as it is now: the learned skills, the starting skills erased, the
--- kept Boosts and the hotbar.
+-- kept Boosts and the hotbar. A row that shows a form of a starting skill started as that skill
+-- (1.4.0): its starting level is not bought, and the starting skill is not erased.
 local function snapshot(iic)
+  local rows = rq.chara.slots(iic)
+  local key = keyer(rows)
   local base, base_list = {}, rq.chara.base_skills(iic)
-  for _, s in ipairs(base_list) do base[s.id] = s.n end
+  for _, s in ipairs(base_list) do base[key(s.id)] = s.n end
   local boosts = boost_table(iic)
   local skills, bar, have = {}, {}, {}
   for i = 1, BAR do bar[i] = 0 end
-  for _, s in ipairs(rq.chara.slots(iic)) do
+  for _, s in ipairs(rows) do
     if s.skill > 0 then
-      have[s.skill] = true
+      have[key(s.skill)] = true
       if s.bar >= 1 and s.bar <= BAR then bar[s.bar] = s.skill end
-      local from = math.min(base[s.skill] or 0, s.n)
+      local from = math.min(base[key(s.skill)] or 0, s.n)
       if s.n > from and s.cost ~= -1 then
         if s.cost > 0 or offered(iic, s.skill, from, s.n, boosts) then
           skills[#skills + 1] = { id = s.skill, n = s.n }
@@ -176,7 +234,7 @@ local function snapshot(iic)
   end
   local erased = {}
   for _, s in ipairs(base_list) do
-    if not have[s.id] and s.id ~= HELD and buyable(s.id) then erased[#erased + 1] = s.id end
+    if not have[key(s.id)] and s.id ~= HELD and buyable(s.id) then erased[#erased + 1] = s.id end
   end
   local kept = {}
   for _, id in ipairs(sorted_keys(boosts)) do
@@ -253,36 +311,49 @@ end
 
 -- ---- planning a load ----
 
--- The plan of a load: the actions in order ({skill, from, to, points} learns, {skill, forget,
--- back} erases), their price (points), what the mods give back for the erasures (back), the most
--- spent at one time (peak), and counts for the dialogs. nil, why ("skills",
--- "room", "points") and a detail when it cannot be done now.
+-- The plan of a load: the actions in order ({skill, key, from, to, points} learns, {skill, key,
+-- forget, back} erases), their price (points), what the mods give back for the erasures (back), the
+-- most spent at one time (peak), and counts for the dialogs. nil, why ("skills", "room", "points")
+-- and a detail when it cannot be done now.
+--
+-- Skills are followed by their family's key (keyer): lv, want and the groups say where a family's
+-- row is, read from the try's rows after each step (learnable's third value, loader 2.66.0), so a
+-- row the game or a mod shows as another form is followed; an action names the form the list sold
+-- or the row showed.
 local function plan_load(iic, entry, with_boosts)
   local P = { entry = entry, actions = {}, points = 0, new = 0, raised = 0, extra = 0, erased = 0,
     boosts = 0, back = 0, peak = 0 }
-  local lv, start, rows0 = {}, {}, {}
-  for _, s in ipairs(rq.chara.slots(iic)) do
+  local rows_now = rq.chara.slots(iic)
+  local key = keyer(rows_now)
+  local lv, shown, start, rows0 = {}, {}, {}, {}
+  for _, s in ipairs(rows_now) do
     if s.skill > 0 then
-      lv[s.skill] = s.n
-      start[s.skill] = s.n
-      rows0[s.skill] = s
+      local k = key(s.skill)
+      lv[k] = s.n
+      shown[k] = s.skill
+      start[k] = s.n
+      rows0[k] = s
     end
   end
   local base_n = {}
-  for _, s in ipairs(rq.chara.base_skills(iic)) do base_n[s.id] = s.n end
-  local paid, fresh = {}, {} -- points paid per skill in the plan; rows the plan made
+  for _, s in ipairs(rq.chara.base_skills(iic)) do base_n[key(s.id)] = s.n end
+  local paid, fresh = {}, {} -- points paid per family in the plan; rows the plan made
   local spent = 0            -- the points spent so far, less what came back
   local want = {}
-  for _, s in ipairs(entry.skills) do want[s.id] = math.max(want[s.id] or 0, s.n) end
+  for _, s in ipairs(entry.skills) do
+    local k = key(s.id)
+    want[k] = math.max(want[k] or 0, s.n)
+  end
   local drop, helper = {}, {}   -- erase once nothing needs them: lacked by the loadout; on the way
   for _, id in ipairs(entry.erased or {}) do
-    if lv[id] and not want[id] and id ~= HELD then drop[id] = true end
+    local k = key(id)
+    if lv[k] and not want[k] and id ~= HELD then drop[k] = true end
   end
   local level = (rq.chara.get(iic) or {}).level or 0
   local after, goals = {}, {}
   local list, room, probes = nil, 0, 0
 
-  -- The list and the free rows after the steps so far, and extra ones.
+  -- The list, the free rows and the rows after the steps so far, and extra ones.
   local function look(extra)
     probes = probes + 1
     if probes > PROBES then error("more than " .. PROBES .. " tries", 0) end
@@ -291,107 +362,136 @@ local function plan_load(iic, entry, with_boosts)
       steps = table.move(after, 1, #after, 1, {})
       for _, st in ipairs(extra) do steps[#steps + 1] = st end
     end
-    local rows, free = rq.chara.learnable(iic, { after = steps })
-    if rows then return rows, free end
+    local offers, free, rows = rq.chara.learnable(iic, { after = steps })
+    if offers then return offers, free, rows end
     if extra then return nil, 0 end -- a try that needs a row the game has not got: nothing for sale
     error("no row left to try a skill in", 0)
   end
 
+  -- The list after the steps so far; where each family's row is and the form it shows.
   local function now()
-    if not list then list, room = look() end
+    if not list then
+      local rows
+      list, room, rows = look()
+      lv, shown = {}, {}
+      for _, s in ipairs(rows or {}) do
+        if s.skill > 0 then
+          local k = key(s.skill)
+          lv[k] = math.max(lv[k] or 0, s.n)
+          shown[k] = shown[k] or s.skill
+        end
+      end
+    end
     return list, room
   end
 
-  local function push(id, n, pts)
-    after[#after + 1] = { skill = id, n = n }
+  -- The family's row in a list: for sale (the first form with a price), and its row.
+  local function offer(offers, k)
+    local first
+    for _, r in ipairs(offers or {}) do
+      if key(r.skill) == k then
+        if r.points > 0 then return true, r end
+        first = first or r
+      end
+    end
+    return false, first
+  end
+
+  local function push(k, skill, n, pts)
+    after[#after + 1] = { skill = skill, n = n }
     list = nil
     local last = P.actions[#P.actions]
     if n == 0 then
-      P.actions[#P.actions + 1] = { skill = id, forget = true, back = pts or 0 }
-      lv[id] = nil
+      P.actions[#P.actions + 1] = { skill = skill, key = k, forget = true, back = pts or 0 }
+      lv[k], shown[k] = nil, nil
     else
-      if last and not last.forget and last.skill == id then
+      if last and not last.forget and last.key == k then
         last.to = n
+        last.skill = skill
         last.points = last.points + (pts or 0)
       else
-        P.actions[#P.actions + 1] = { skill = id, from = lv[id] or 0, to = n, points = pts or 0 }
+        P.actions[#P.actions + 1] = { skill = skill, key = k, from = lv[k] or 0, to = n, points = pts or 0 }
       end
-      lv[id] = n
+      lv[k] = n
+      shown[k] = shown[k] or skill
     end
   end
 
-  -- The purchase record id's row would have now, as rq.chara.learn writes it: a new row the points
-  -- paid; a raised one its record plus them (a -1 record becomes them, a 0 one the older steps at
-  -- the game's price plus them).
-  local function record(id)
-    local p = paid[id] or 0
-    local r = rows0[id]
-    if fresh[id] or not r then return p end
+  -- The purchase record the family's row would have now, as rq.chara.learn writes it: a new row the
+  -- points paid; a raised one its record plus them (a -1 record becomes them, a 0 one the older
+  -- steps at the game's price plus them).
+  local function record(k)
+    local p = paid[k] or 0
+    local r = rows0[k]
+    if fresh[k] or not r then return p end
     if p == 0 then return r.cost end
     if r.cost > 0 then return r.cost + p end
     if r.cost == -1 then return p end
-    local older, from = 0, base_n[id] or 0
-    if r.n > from then older = rq.chara.price(iic, id, from, r.n) or 0 end
+    local older, from = 0, base_n[k] or 0
+    if r.n > from then older = rq.chara.price(iic, r.skill, from, r.n) or 0 end
     return older + p
   end
 
-  -- What the mods give back when id is erased now, as its row is after the steps so far.
-  local function refund(id)
-    local n = math.max(lv[id] or 1, 1)
+  -- What the mods give back when the family's row is erased now, as it is after the steps so far.
+  local function refund(k, skill)
+    local n = math.max(lv[k] or 1, 1)
     local by, keeps = boost_table(iic)
-    local ok, back = pcall(rq.chara.forget_points, iic, id,
-      { player = true, n = n, cost = record(id), kept = keeps and by[id] ~= nil and n >= 4 })
+    local ok, back = pcall(rq.chara.forget_points, iic, skill,
+      { player = true, n = n, cost = record(k), kept = keeps and by[skill] ~= nil and n >= 4 })
     if not ok then
-      rq.log(("%s: what erasing %s gives back: %s"):format(MOD, skill_name(id), tostring(back)))
+      rq.log(("%s: what erasing %s gives back: %s"):format(MOD, skill_name(skill), tostring(back)))
       return 0
     end
     return back
   end
 
-  local function buy(id, n, pts)
-    paid[id] = (paid[id] or 0) + pts
+  local function buy(k, skill, n, pts)
+    paid[k] = (paid[k] or 0) + pts
     spent = spent + pts
     if spent > P.peak then P.peak = spent end
     P.points = P.points + pts
-    push(id, n, pts)
+    push(k, skill, n, pts)
   end
 
-  local function erase(id, group)
-    local back = refund(id)
+  -- Erases the family's row, by the form it shows after the steps so far.
+  local function erase(k, group)
+    now()
+    local skill = shown[k] or k
+    local back = refund(k, skill)
     P.back = P.back + back
     spent = spent - back
-    paid[id], fresh[id] = nil, true
-    push(id, 0, back)
-    if group then group[id] = nil end
+    paid[k], fresh[k] = nil, true
+    push(k, skill, 0, back)
+    if group then group[k] = nil end
     if group == drop then P.erased = P.erased + 1 end
   end
 
-  -- The skills still to reach: the loadout's and those on the way to one.
+  -- The families still to reach: the loadout's and those on the way to one.
   local function pending()
     local out = {}
-    for id, n in pairs(want) do
-      if (lv[id] or 0) < n then out[id] = true end
+    for k, n in pairs(want) do
+      if (lv[k] or 0) < n then out[k] = true end
     end
     for _, gl in ipairs(goals) do
-      if (lv[gl.id] or 0) < gl.n then out[gl.id] = true end
+      if (lv[gl.key] or 0) < gl.n then out[gl.key] = true end
     end
     return out
   end
 
-  -- Whether a skill still to reach needs id: the game's condition names it, or erasing id takes
-  -- one of its steps off sale.
-  local function needed(id)
+  -- Whether a family still to reach needs the family k: the game's condition names it, or erasing
+  -- k's row takes one of its steps off sale.
+  local function needed(k)
     local cur = now()
     local pend = pending()
     for p in pairs(pend) do
-      local r = find_row(cur, p)
+      local _, r = offer(cur, p)
       for _, q in ipairs(r and r.needs or {}) do
-        if q.id == id then return true end
+        if key(q.id) == k then return true end
       end
     end
-    local without = look({ { skill = id, n = 0 } })
+    local without = look({ { skill = shown[k] or k, n = 0 } })
     for p in pairs(pend) do
-      if for_sale(cur, p) and not for_sale(without, p) then return true end
+      if offer(cur, p) and not offer(without, p) then return true end
     end
     return false
   end
@@ -400,9 +500,9 @@ local function plan_load(iic, entry, with_boosts)
   -- nothing still to come needs.
   local function make_room()
     for _, group in ipairs({ helper, drop }) do
-      for _, id in ipairs(sorted_keys(group)) do
-        if lv[id] and not needed(id) then
-          erase(id, group)
+      for _, k in ipairs(sorted_keys(group)) do
+        if lv[k] and not needed(k) then
+          erase(k, group)
           return true
         end
       end
@@ -416,10 +516,11 @@ local function plan_load(iic, entry, with_boosts)
   -- of the pair, then a skill of the same name, then the loadout's skills, then the list's.
   local function unlock(id)
     local cur = now()
-    local tried, order = { [id] = true }, {}
+    local k = key(id)
+    local tried, order = { [k] = true }, {}
     local function add(c)
-      if c and not tried[c] then
-        tried[c] = true
+      if c and not tried[key(c)] then
+        tried[key(c)] = true
         order[#order + 1] = c
       end
     end
@@ -434,10 +535,10 @@ local function plan_load(iic, entry, with_boosts)
     for _, c in ipairs(order) do
       local t = skill_type(c)
       local top = (t == 20 or t == 30) and 4 or 9
-      local from = lv[c] or 0
-      if buyable(c) and from < top and for_sale(look({ { skill = c, n = top } }), id) then
-        for k = from + 1, top do
-          if k == top or for_sale(look({ { skill = c, n = k } }), id) then return { id = c, n = k } end
+      local from = lv[key(c)] or 0
+      if buyable(c) and from < top and offer(look({ { skill = c, n = top } }), k) then
+        for n = from + 1, top do
+          if n == top or offer(look({ { skill = c, n = n } }), k) then return { id = c, n = n } end
         end
       end
     end
@@ -449,7 +550,7 @@ local function plan_load(iic, entry, with_boosts)
     if r and r.level and level < r.level then return nil, "condition", r.why end
     local out = {}
     for _, q in ipairs(r and r.needs or {}) do
-      if (lv[q.id] or 0) < q.n then out[#out + 1] = q end
+      if (lv[key(q.id)] or 0) < q.n then out[#out + 1] = q end
     end
     if #out > 0 then return out end
     local u = unlock(id)
@@ -458,27 +559,30 @@ local function plan_load(iic, entry, with_boosts)
     return nil, "not sold"
   end
 
-  -- Raises id to n, step by step at the list's price, reaching what it needs first.
+  -- Raises id's family to n, step by step at the list's price, reaching what it needs first.
   local function reach(id, n, depth)
-    if (lv[id] or 0) >= n then return true end
+    local k = key(id)
+    now() -- lv as the steps kept leave it (an attempt taken back left its own)
+    if (lv[k] or 0) >= n then return true end
     if depth > DEPTH then return false, { id = id, why = "condition", text = "too many skills on the way" } end
-    goals[#goals + 1] = { id = id, n = n }
+    goals[#goals + 1] = { key = k, n = n }
     local ok, err = true, nil
     local turns = 0
-    while ok and (lv[id] or 0) < n do
+    while ok do
+      local cur, free = now()
+      if (lv[k] or 0) >= n then break end
       turns = turns + 1
       if turns > 200 then
         ok, err = false, { id = id, why = "condition", text = "no way found" }
         break
       end
-      local cur, free = now()
-      local sale, r = for_sale(cur, id)
+      local sale, r = offer(cur, k)
       if sale then
-        if not lv[id] and free < 1 then
+        if not lv[k] and free < 1 then
           if make_room() then goto again end -- the list is read again after the erase
           error({ no_room = id }, 0) -- the plan stops here; plan_load counts the rows
         end
-        buy(id, (lv[id] or 0) + (r.step or 1), r.points)
+        buy(k, r.skill, (lv[k] or 0) + (r.step or 1), r.points)
       else
         local need, why, text = lacks(id, r)
         if not need then
@@ -486,14 +590,15 @@ local function plan_load(iic, entry, with_boosts)
         else
           local mark = #after
           for _, q in ipairs(need) do
-            local had = lv[q.id]
+            local qk = key(q.id)
+            local had = lv[qk]
             local ok2, e2 = reach(q.id, q.n, depth + 1)
             if not ok2 then
               ok, err = false, e2
               break
             end
-            if not had and not want[q.id] and not helper[q.id] then
-              helper[q.id] = true
+            if not had and not want[qk] and not helper[qk] then
+              helper[qk] = true
               P.extra = P.extra + 1
             end
           end
@@ -509,16 +614,14 @@ local function plan_load(iic, entry, with_boosts)
   end
 
   -- One skill of the loadout (or a kept Boost): reached, or left out of the plan with its reason.
-  local cannot = {}
   local function attempt(id, n)
     local last = P.actions[#P.actions]
     local keep = {
       after = #after, actions = #P.actions, points = P.points, extra = P.extra,
       erased = P.erased, last_to = last and last.to, last_points = last and last.points,
-      back = P.back, peak = P.peak, spent = spent,
-      lv = {}, helper = {}, drop = {}, paid = {}, fresh = {},
+      last_skill = last and last.skill, back = P.back, peak = P.peak, spent = spent,
+      helper = {}, drop = {}, paid = {}, fresh = {},
     }
-    for k, v in pairs(lv) do keep.lv[k] = v end
     for k in pairs(helper) do keep.helper[k] = true end
     for k in pairs(drop) do keep.drop[k] = true end
     for k, v in pairs(paid) do keep.paid[k] = v end
@@ -528,33 +631,54 @@ local function plan_load(iic, entry, with_boosts)
     for i = #after, keep.after + 1, -1 do after[i] = nil end
     for i = #P.actions, keep.actions + 1, -1 do P.actions[i] = nil end
     last = P.actions[#P.actions]
-    if last then last.to, last.points = keep.last_to, keep.last_points end
+    if last then last.to, last.points, last.skill = keep.last_to, keep.last_points, keep.last_skill end
     P.points, P.extra, P.erased = keep.points, keep.extra, keep.erased
     P.back, P.peak, spent = keep.back, keep.peak, keep.spent
-    lv, helper, drop, paid, fresh = keep.lv, keep.helper, keep.drop, keep.paid, keep.fresh
-    list = nil
+    helper, drop, paid, fresh = keep.helper, keep.drop, keep.paid, keep.fresh
+    list = nil -- lv and shown are read again from the steps kept
     if err.id ~= id then
       err.via, err.id = err.id, id
     end
     err.text = why_text(err.why, err.text)
-    cannot[#cannot + 1] = err
-    return false
+    return false, err
   end
 
+  local cannot = {}
   local ran, stop = pcall(function()
     if with_boosts then
       for _, id in ipairs(boosts_to_rebuild(iic, entry)) do
-        if attempt(id, 4) then
+        local ok, err = attempt(id, 4)
+        if ok then
           P.boosts = P.boosts + 1
-          helper[id] = nil
-          erase(id)
+          helper[key(id)] = nil
+          erase(key(id))
+        else
+          cannot[#cannot + 1] = err
         end
       end
     end
-    for _, s in ipairs(entry.skills) do attempt(s.id, s.n) end
+    local failed = {}
+    for _, s in ipairs(entry.skills) do
+      local ok, err = attempt(s.id, s.n)
+      if not ok then failed[#failed + 1] = { s = s, err = err } end
+    end
+    -- Passes: a skill the game sells only once several of the loadout's skills are learned, with no
+    -- condition written, is tried again after them while a pass reaches one.
+    while #failed > 0 do
+      local again = {}
+      for _, f in ipairs(failed) do
+        local ok, err = attempt(f.s.id, f.s.n)
+        if not ok then again[#again + 1] = { s = f.s, err = err } end
+      end
+      local reached = #again < #failed
+      failed = again
+      if not reached then break end
+    end
+    for _, f in ipairs(failed) do cannot[#cannot + 1] = f.err end
     for _, group in ipairs({ helper, drop }) do
-      for _, id in ipairs(sorted_keys(group)) do
-        if lv[id] then erase(id, group) end
+      for _, k in ipairs(sorted_keys(group)) do
+        now()
+        if lv[k] then erase(k, group) end
       end
     end
   end)
@@ -562,18 +686,22 @@ local function plan_load(iic, entry, with_boosts)
     if type(stop) ~= "table" or not stop.no_room then error(stop, 0) end
     -- No row for a new skill and nothing to erase: that skill and each of the loadout's skills
     -- the character still lacks needs one (at least: skills on the way to them may need more).
-    local short = (want[stop.no_room] or lv[stop.no_room]) and 0 or 1
-    for id in pairs(want) do
-      if not lv[id] then short = short + 1 end
+    local short = (want[key(stop.no_room)] or lv[key(stop.no_room)]) and 0 or 1
+    for k in pairs(want) do
+      if not lv[k] then short = short + 1 end
     end
     short = math.max(short, 1)
     local have = rq.chara.skill_room(iic)
     return nil, "room", { short = short, have = have, need = have + short }
   end
 
+  now()
+  local counted = {}
   for _, s in ipairs(entry.skills) do
-    local from = start[s.id] or 0
-    if from < s.n and (lv[s.id] or 0) >= s.n then
+    local k = key(s.id)
+    local from = start[k] or 0
+    if not counted[k] and from < want[k] and (lv[k] or 0) >= want[k] then
+      counted[k] = true
       if from == 0 then P.new = P.new + 1 else P.raised = P.raised + 1 end
     end
   end
@@ -612,16 +740,22 @@ end
 
 -- Puts the saved hotbar back: each saved skill the character has goes to its position, and what
 -- sat there comes off. Positions the loadout left empty, or past the hotbar's size, stay as they are.
+-- A saved skill goes to its family's row, whatever form it shows (1.4.0).
 local function put_bar(iic, bar)
   if type(bar) ~= "table" then return 0 end
   local rows = rq.chara.slots(iic)
-  local by_skill = {}
+  local key = keyer(rows)
+  local by_key = {}
   for _, s in ipairs(rows) do
-    if s.skill > 0 then by_skill[s.skill] = s end
+    if s.skill > 0 then
+      local k = key(s.skill)
+      if not by_key[k] or s.skill == k then by_key[k] = s end
+    end
   end
   local placed = 0
   for pos = 1, bar_size(iic) do
-    local row = by_skill[bar[pos] or 0]
+    local id = bar[pos] or 0
+    local row = id > 0 and by_key[key(id)] or nil
     if row and row.bar ~= pos then
       for _, s in ipairs(rows) do
         if s.bar == pos then
@@ -661,8 +795,9 @@ local function run(iic, slot, plan)
   end
   for _, a in ipairs(plan.actions) do
     if a.forget then
-      -- The player's erasure: a mod that pays back ERASE pays it back (the third value).
-      local _, _, back = rq.chara.forget(iic, a.skill, { player = true })
+      -- The player's erasure: a mod that pays back ERASE pays it back (the third value). The row
+      -- by the form it shows now, which the plan's try showed too.
+      local _, _, back = rq.chara.forget(iic, held_form(iic, a.skill), { player = true })
       done.back = done.back + (back or 0)
       done.erased = done.erased + 1
     else
@@ -732,8 +867,14 @@ local function summary(entry, most)
     lines[#lines + 1] = skill_name(s.id) .. " (" .. level_text(s.id, s.n) .. ")"
   end
   local more = {}
-  if entry.erased and #entry.erased > 0 then
-    more[#more + 1] = plural(#entry.erased, "starting skill", "starting skills") .. " erased"
+  -- A starting skill whose form the loadout has is not erased (a slot 1.3.0 saved said so).
+  local families, erased = {}, 0
+  for _, s in ipairs(entry.skills) do families[family_key(s.id)] = true end
+  for _, id in ipairs(entry.erased or {}) do
+    if not families[family_key(id)] then erased = erased + 1 end
+  end
+  if erased > 0 then
+    more[#more + 1] = plural(erased, "starting skill", "starting skills") .. " erased"
   end
   if entry.boosts and #entry.boosts > 0 then
     more[#more + 1] = plural(#entry.boosts, "kept Boost", "kept Boosts")
@@ -827,6 +968,39 @@ local function done_text(plan)
   return table.concat(parts, ", ", 1, #parts - 1) .. " and " .. parts[#parts]
 end
 
+-- The loadout's skills whose row shows another form after a load: { {id, shows} }. The weapon or a
+-- knowledge picks the form (Melee Attack 1 for Magic Thrust 1 with a club); the row is the same.
+local function other_forms(iic, entry)
+  local rows = rq.chara.slots(iic)
+  local key = keyer(rows)
+  local shows = {}
+  for _, s in ipairs(rows) do
+    if s.skill > 0 then shows[key(s.skill)] = s.skill end
+  end
+  local out = {}
+  for _, s in ipairs(entry.skills) do
+    local now = shows[key(s.id)]
+    if now and now ~= s.id then out[#out + 1] = { id = s.id, shows = now } end
+  end
+  return out
+end
+
+-- Those as lines for the notice: two at most, then how many more.
+local function forms_text(iic, entry)
+  local list = other_forms(iic, entry)
+  if #list == 0 then return "" end
+  local lines = {}
+  for i, f in ipairs(list) do
+    if i > 2 then
+      lines[#lines + 1] = plural(#list - 2, "more skill shows", "more skills show") .. " another form."
+      break
+    end
+    lines[#lines + 1] = ("%s shows as %s with the weapon %s holds."):format(skill_name(f.id),
+      skill_name(f.shows), short_name(iic))
+  end
+  return "\n" .. table.concat(lines, "\n")
+end
+
 local function do_save(iic, slot)
   local old = get(iic, slot)
   if old then
@@ -851,8 +1025,9 @@ end
 local function do_run(iic, slot, entry, plan)
   local ok, done, more = run(iic, slot, plan)
   if ok then
+    local forms = forms_text(iic, entry)
     if #plan.actions == 0 then
-      rq.ui.notice(("%s is loaded: nothing to learn, the hotbar is set."):format(quote(entry)))
+      rq.ui.notice(("%s is loaded: nothing to learn, the hotbar is set.%s"):format(quote(entry), forms))
     else
       local way = plan.extra > 0 and ("\n" .. plural(plan.extra, "skill was", "skills were")
         .. " learned on the way and erased.") or ""
@@ -861,7 +1036,7 @@ local function do_run(iic, slot, entry, plan)
         price = ("%s\n(%d spent, %d back for the erased skills)"):format(
           plural(done.points - done.back, "skill point", "skill points"), done.points, done.back)
       end
-      rq.ui.notice(("%s is loaded for %s.\n%s.%s"):format(quote(entry), price, done_text(plan), way))
+      rq.ui.notice(("%s is loaded for %s.\n%s.%s%s"):format(quote(entry), price, done_text(plan), way, forms))
     end
   else
     rq.ui.notice(("Loading %s stopped at %s: %s.\nThe steps before it are done."):format(quote(entry),
@@ -1088,5 +1263,6 @@ return {
   wipe = wipe,
   put = put, -- writes a slot's data as it is: for tests of damaged data
   bar_size = bar_size,
+  other_forms = other_forms, -- the loadout's skills whose row shows another form, as the notice says
   prompt = function() return prompt end,
 }

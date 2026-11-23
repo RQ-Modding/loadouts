@@ -3,6 +3,28 @@
 Each section is a version of the mod, the `version` in `mod.json`. The release workflow copies the
 section of a tagged version into the release notes.
 
+## 1.4.0
+
+- A loadout follows a row, not a skill's number, when the game or a mod shows the row as another
+  form of its skill (`rq.skill.forms`, loader 2.66.0): Melee Attack as the game's Thrust Attack with
+  Spear Knowledge and a spear, as Spellblade Knowledge's Spellblade Attack or Magic Thrust, Ranged
+  Attack as Athena QoL's Calculated Shot. A build with Magic Thrust saved before both knowledges is
+  learned loads in one go, whatever the order of its skills: before, the load was refused ("Magic
+  Thrust 1: not in this character's skill list").
+- Such a row started as the character's starting skill: a save no longer marks that skill as
+  erased, and a load raises the row from the uses it started with, as the game does, instead of
+  erasing it and buying the attack as a new skill. A slot saved by 1.3.0 loads right without being
+  saved again.
+- A load whose weapon shows another form goes through, and the notice after it says so ("Magic
+  Thrust 1 shows as Melee Attack 1 with the weapon Elenoa holds"). The hotbar puts a saved skill on
+  its row, whatever form it shows.
+- A skill the game sells only once several of the loadout's skills are learned, with no condition
+  the game writes, is tried again after them.
+- The plan reads each row from the game's own recalculation after each step (loader 2.66.0).
+- A character with two rows of one attack (a Thrust Attack left by an erased Spear Knowledge beside
+  a Melee Attack) has them matched by number, as before.
+- Needs loader 2.66.0.
+
 ## 1.3.0
 
 - A load counts what any mod gives back for the skills it erases, not only Skill Removal Payback:
